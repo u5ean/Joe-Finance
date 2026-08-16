@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Ledger — Personal Finance</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --paper:#EDEAE1;
+    --paper-raised:#F5F3EC;
+    --ink:#23261F;
+    --ink-soft:#5B5D51;
+    --ledger:#234D35;
+    --ledger-dark:#16332390;
+    --income:#4C7A56;
+    --expense:#9C3B30;
+    --gold:#A9832B;
+    --rule: #23261F22;
+    --radius: 3px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    background-image:
+      repeating-linear-gradient(transparent, transparent 27px, var(--rule) 28px);
+  }
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  header.top{
+    padding:28px 32px 20px;
+    border-bottom:2px solid var(--ink);
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    flex-wrap:wrap;
+    gap:12px;
+  }
+  header.top h1{
+    font-family:'Fraunces',serif;
+    font-weight:700;
+    font-size:2.1rem;
+    letter-spacing:-0.01em;
+    margin:0;
+    color:var(--ledger);
+  }
+  header.top .tag{
+    font-size:0.72rem;
+    text-transform:uppercase;
+    letter-spacing:0.12em;
+    color:var(--ink-soft);
+  }
+  #authBox{display:flex; gap:8px; align-items:center;}
+  button{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:0.85rem;
+    border:1.5px solid var(--ink);
+    background:var(--ink);
+    color:var(--paper);
+    padding:9px 16px;
+    border-radius:var(--radius);
+    cursor:pointer;
+  }
+  button.ghost{background:transparent; color:var(--ink);}
+  button:hover{opacity:0.85;}
+  input, select{
+    font-family:'Inter',sans-serif;
+    padding:8px 10px;
+    border:1.5px solid var(--ink);
+    border-radius:var(--radius);
+    background:var(--paper-raised);
+    color:var(--ink);
+    font-size:0.9rem;
+  }
+  main{max-width:960px; margin:0 auto; padding:32px;}
+  #loginScreen{
+    max-width:380px; margin:80px auto; text-align:center;
+    background:var(--paper-raised); border:1.5px solid var(--ink);
+    padding:36px 28px; border-radius:var(--radius);
+  }
+  #loginScreen h2{font-family:'Fraunces',serif; color:var(--ledger); margin-top:0;}
+  #loginScreen input{width:100%; margin-bottom:10px;}
+  #loginScreen button{width:100%; margin-top:4px;}
+  #loginStatus{font-size:0.8rem; color:var(--ink-soft); margin-top:12px; min-height:1em;}
+
+  .cards{display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin:28px 0;}
+  .stamp{
+    background:var(--paper-raised);
+    border:1.5px solid var(--ink);
+    padding:18px 18px 16px;
+    position:relative;
+    border-radius:var(--radius);
+  }
+  .stamp::before{
+    content:"";
+    position:absolute; top:8px; right:8px; bottom:8px; left:8px;
+    border:1px dashed var(--rule);
+    pointer-events:none;
+  }
+  .stamp .label{font-size:0.7rem; text-transform:uppercase; letter-spacing:0.1em; color:var(--ink-soft);}
+  .stamp .value{font-family:'IBM Plex Mono',monospace; font-size:1.55rem; font-weight:600; margin-top:6px;}
+  .stamp.income .value{color:var(--income);}
+  .stamp.expense .value{color:var(--expense);}
+  .stamp.net .value{color:var(--ledger);}
+
+  section{margin-bottom:36px;}
+  section h3{
+    font-family:'Fraunces',serif; font-size:1.1rem; color:var(--ledger);
+    border-bottom:1.5px solid var(--ink); padding-bottom:6px; margin-bottom:14px;
+    display:flex; justify-content:space-between; align-items:center;
+  }
+  .ledger-row{
+    display:flex; align-items:baseline; gap:8px; padding:7px 0;
+    font-size:0.92rem;
+  }
+  .ledger-row .who{white-space:nowrap;}
+  .ledger-row .leader{flex:1; border-bottom:1px dotted var(--ink-soft); position:relative; top:-4px;}
+  .ledger-row .amt{white-space:nowrap; font-weight:600;}
+  .ledger-row .amt.expense{color:var(--expense);}
+  .ledger-row .amt.income{color:var(--income);}
+  .ledger-row .meta{font-size:0.72rem; color:var(--ink-soft); margin-left:6px;}
+
+  .bar-row{margin-bottom:10px;}
+  .bar-row .bhead{display:flex; justify-content:space-between; font-size:0.82rem; margin-bottom:3px;}
+  .bar-track{background:var(--rule); height:8px; border-radius:2px; overflow:hidden;}
+  .bar-fill{height:100%; background:var(--gold);}
+
+  form.add-txn{
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    background:var(--paper-raised); border:1.5px solid var(--ink);
+    padding:14px; border-radius:var(--radius);
+  }
+  form.add-txn input, form.add-txn select{flex:1; min-width:110px;}
+  form.add-txn button{flex:0 0 auto;}
+
+  .empty{color:var(--ink-soft); font-size:0.85rem; font-style:italic;}
+  .hidden{display:none !important;}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <h2>Ledger</h2>
+  <p class="tag" style="margin-bottom:20px;">personal finance, kept honest</p>
+  <input type="email" id="emailInput" placeholder="you@email.com" />
+  <button onclick="sendMagicLink()">Send magic link</button>
+  <button class="ghost" onclick="loginWithGoogle()" style="margin-top:8px;">Continue with Google</button>
+  <div id="loginStatus"></div>
+</div>
+
+<div id="app" class="hidden">
+  <header class="top">
+    <div>
+      <h1>Ledger</h1>
+      <div class="tag">this month at a glance</div>
+    </div>
+    <div id="authBox">
+      <span id="userEmail" class="mono" style="font-size:0.8rem;"></span>
+      <button class="ghost" onclick="logout()">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="cards">
+      <div class="stamp income">
+        <div class="label">Income (this month)</div>
+        <div class="value mono" id="cardIncome">RM 0.00</div>
+      </div>
+      <div class="stamp expense">
+        <div class="label">Expenses (this month)</div>
+        <div class="value mono" id="cardExpense">RM 0.00</div>
+      </div>
+      <div class="stamp net">
+        <div class="label">Net</div>
+        <div class="value mono" id="cardNet">RM 0.00</div>
+      </div>
+    </div>
+
+    <section>
+      <h3>Add a transaction</h3>
+      <form class="add-txn" onsubmit="addTransaction(event)">
+        <select id="txnType"><option value="expense">Expense</option><option value="income">Income</option></select>
+        <input id="txnAmount" type="number" step="0.01" placeholder="Amount" required />
+        <input id="txnVendor" type="text" placeholder="Vendor / source" />
+        <input id="txnCategory" type="text" placeholder="Category" />
+        <input id="txnDate" type="date" />
+        <button type="submit">Add</button>
+      </form>
+    </section>
+
+    <section>
+      <h3>Category breakdown <span class="tag" style="font-size:0.65rem;">this month</span></h3>
+      <div id="categoryBars"><p class="empty">No transactions yet this month.</p></div>
+    </section>
+
+    <section>
+      <h3>Fixed expenses</h3>
+      <div id="fixedList"><p class="empty">No fixed expenses set up yet.</p></div>
+    </section>
+
+    <section>
+      <h3>Recent transactions</h3>
+      <div id="txnList"><p class="empty">Nothing recorded yet.</p></div>
+    </section>
+  </main>
+</div>
+
+<script>
+// ============================================================
+// CONFIG — replace with your Supabase project values
+// (Project Settings -> API). The anon key is safe to expose
+// client-side; RLS policies from schema.sql protect the data.
+// ============================================================
+const SUPABASE_URL = "https://mqmyqayxyxocjwbysktt.supabase.co/";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xbXlxYXl4eXhvY2p3Ynlza3R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4ODg3NTgsImV4cCI6MjEwMjQ2NDc1OH0.7eMKKhT2wVvYLlPeWCuQYqhJp660kdF7kkaQ3qam4g8";
+
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let currentUser = null;
+
+document.getElementById('txnDate').valueAsDate = new Date();
+
+async function sendMagicLink(){
+  const email = document.getElementById('emailInput').value.trim();
+  const status = document.getElementById('loginStatus');
+  if(!email){ status.textContent = "Enter an email first."; return; }
+  status.textContent = "Sending...";
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: window.location.href }});
+  status.textContent = error ? error.message : "Check your email for the login link.";
+}
+
+async function loginWithGoogle(){
+  await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: window.location.href }});
+}
+
+async function logout(){
+  await sb.auth.signOut();
+  window.location.reload();
+}
+
+async function init(){
+  const { data:{ session } } = await sb.auth.getSession();
+  if(!session){
+    document.getElementById('loginScreen').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+    return;
+  }
+  currentUser = session.user;
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  document.getElementById('userEmail').textContent = currentUser.email;
+  await loadAll();
+}
+
+async function loadAll(){
+  await Promise.all([loadTransactions(), loadFixedExpenses()]);
+}
+
+function firstOfMonthISO(){
+  const d = new Date(); d.setDate(1);
+  return d.toISOString().slice(0,10);
+}
+
+async function loadTransactions(){
+  const { data, error } = await sb
+    .from('transactions')
+    .select('*')
+    .order('txn_date', { ascending:false })
+    .limit(200);
+  if(error){ console.error(error); return; }
+
+  const monthStart = firstOfMonthISO();
+  const thisMonth = data.filter(t => t.txn_date >= monthStart);
+
+  const income = thisMonth.filter(t=>t.type==='income').reduce((s,t)=>s+Number(t.amount),0);
+  const expense = thisMonth.filter(t=>t.type==='expense').reduce((s,t)=>s+Number(t.amount),0);
+
+  document.getElementById('cardIncome').textContent = 'RM ' + income.toFixed(2);
+  document.getElementById('cardExpense').textContent = 'RM ' + expense.toFixed(2);
+  document.getElementById('cardNet').textContent = 'RM ' + (income-expense).toFixed(2);
+
+  // category bars (expenses only, this month)
+  const byCat = {};
+  thisMonth.filter(t=>t.type==='expense').forEach(t=>{
+    byCat[t.category] = (byCat[t.category]||0) + Number(t.amount);
+  });
+  const catEntries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  const maxVal = catEntries.length ? catEntries[0][1] : 1;
+  const barsEl = document.getElementById('categoryBars');
+  barsEl.innerHTML = catEntries.length ? '' : '<p class="empty">No transactions yet this month.</p>';
+  catEntries.forEach(([cat, val])=>{
+    const row = document.createElement('div');
+    row.className = 'bar-row';
+    row.innerHTML = `
+      <div class="bhead"><span>${escapeHtml(cat)}</span><span class="mono">RM ${val.toFixed(2)}</span></div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(val/maxVal*100).toFixed(0)}%"></div></div>`;
+    barsEl.appendChild(row);
+  });
+
+  // recent list
+  const listEl = document.getElementById('txnList');
+  listEl.innerHTML = data.length ? '' : '<p class="empty">Nothing recorded yet.</p>';
+  data.slice(0,40).forEach(t=>{
+    const row = document.createElement('div');
+    row.className = 'ledger-row';
+    row.innerHTML = `
+      <span class="who">${escapeHtml(t.vendor || t.category)}</span>
+      <span class="leader"></span>
+      <span class="amt ${t.type}">${t.type==='expense'?'-':'+'} RM ${Number(t.amount).toFixed(2)}</span>
+      <span class="meta">${t.txn_date} · ${escapeHtml(t.source)}</span>`;
+    listEl.appendChild(row);
+  });
+}
+
+async function loadFixedExpenses(){
+  const { data, error } = await sb
+    .from('fixed_expenses')
+    .select('*')
+    .eq('active', true)
+    .order('due_day', { ascending:true });
+  if(error){ console.error(error); return; }
+  const el = document.getElementById('fixedList');
+  el.innerHTML = data.length ? '' : '<p class="empty">No fixed expenses set up yet.</p>';
+  data.forEach(f=>{
+    const row = document.createElement('div');
+    row.className = 'ledger-row';
+    row.innerHTML = `
+      <span class="who">${escapeHtml(f.name)}</span>
+      <span class="leader"></span>
+      <span class="amt expense">RM ${Number(f.amount).toFixed(2)}</span>
+      <span class="meta">due ${f.due_day || '—'}</span>`;
+    el.appendChild(row);
+  });
+}
+
+async function addTransaction(e){
+  e.preventDefault();
+  const type = document.getElementById('txnType').value;
+  const amount = parseFloat(document.getElementById('txnAmount').value);
+  const vendor = document.getElementById('txnVendor').value.trim();
+  const category = document.getElementById('txnCategory').value.trim() || 'uncategorized';
+  const txn_date = document.getElementById('txnDate').value;
+
+  const { error } = await sb.from('transactions').insert({
+    user_id: currentUser.id, type, amount, vendor, category, txn_date, source:'dashboard'
+  });
+  if(error){ alert(error.message); return; }
+  document.getElementById('txnAmount').value = '';
+  document.getElementById('txnVendor').value = '';
+  document.getElementById('txnCategory').value = '';
+  await loadTransactions();
+}
+
+function escapeHtml(str){
+  return String(str ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+sb.auth.onAuthStateChange((_event, _session) => init());
+init();
+</script>
+</body>
+</html>

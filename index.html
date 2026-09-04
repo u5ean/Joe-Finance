@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600;9..144,700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
   :root{
     --paper:#EDEAE1;
@@ -155,6 +156,11 @@
   form.add-fixed input, form.add-fixed select{flex:1; min-width:110px;}
   form.add-txn button, form.add-fixed button{flex:0 0 auto;}
 
+  .chart-grid{display:grid; grid-template-columns:1.1fr 1fr; gap:20px; align-items:start;}
+  .chart-box{background:var(--paper-raised); border:1.5px solid var(--ink); border-radius:var(--radius); padding:16px;}
+  .chart-box h4{margin:0 0 10px; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-soft); font-weight:600;}
+  @media (max-width:720px){ .chart-grid{grid-template-columns:1fr;} }
+
   .empty{color:var(--ink-soft); font-size:0.85rem; font-style:italic;}
   .hidden{display:none !important;}
 </style>
@@ -225,6 +231,20 @@
     </section>
 
     <section>
+      <h3>Overview <span class="tag" style="font-size:0.65rem;" id="chartRangeTag">selected range</span></h3>
+      <div class="chart-grid">
+        <div class="chart-box">
+          <h4>Income vs expenses over time</h4>
+          <canvas id="trendChart" height="180"></canvas>
+        </div>
+        <div class="chart-box">
+          <h4>Where it went (expenses by category)</h4>
+          <canvas id="categoryChart" height="180"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <section>
       <h3>Category breakdown <span class="tag" style="font-size:0.65rem;">selected range</span></h3>
       <div id="categoryBars"><p class="empty">No transactions in this range.</p></div>
     </section>
@@ -259,13 +279,16 @@
 // ============================================================
 // CONFIG — replace with your Supabase project values
 // ============================================================
-const SUPABASE_URL = "https://mqmyqayxyxocjwbysktt.supabase.co/";
-const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xbXlxYXl4eXhvY2p3Ynlza3R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4ODg3NTgsImV4cCI6MjEwMjQ2NDc1OH0.7eMKKhT2wVvYLlPeWCuQYqhJp660kdF7kkaQ3qam4g8";
-
+const SUPABASE_URL = "https://YOUR-PROJECT.supabase.co";
+const SUPABASE_ANON_KEY = "YOUR-ANON-KEY";
 
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 let currentRange = { start: null, end: null, label: 'This month' };
+let trendChartInstance = null;
+let categoryChartInstance = null;
+
+const CHART_COLORS = ['#234D35','#A9832B','#9C3B30','#4C7A56','#5B5D51','#C9A227','#6E8B7A','#B0413E'];
 
 document.getElementById('txnDate').valueAsDate = new Date();
 
@@ -333,6 +356,7 @@ function setRange(start, end, label){
   document.getElementById('rangeStart').value = start;
   document.getElementById('rangeEnd').value = end;
   document.getElementById('rangeLabel').textContent = label;
+  document.getElementById('chartRangeTag').textContent = label;
   loadAll();
 }
 
@@ -374,6 +398,76 @@ async function loadTransactions(){
   const listEl = document.getElementById('txnList');
   listEl.innerHTML = data.length ? '' : '<p class="empty">Nothing recorded in this range.</p>';
   data.forEach(t=> listEl.appendChild(renderTxnRow(t)));
+
+  renderCharts(data, byCat);
+}
+
+function bucketKey(dateStr, spanDays){
+  const d = new Date(dateStr + 'T00:00:00');
+  if(spanDays <= 45){
+    return dateStr; // daily buckets
+  } else if(spanDays <= 400){
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0');
+    return `${y}-${m}`; // monthly buckets
+  } else {
+    return String(d.getFullYear()); // yearly buckets
+  }
+}
+
+function renderCharts(data, byCat){
+  const start = new Date(currentRange.start + 'T00:00:00');
+  const end = new Date(currentRange.end + 'T00:00:00');
+  const spanDays = Math.max(1, Math.round((end - start) / 86400000));
+
+  // ---- Trend chart: income vs expense per bucket ----
+  const buckets = {};
+  data.forEach(t=>{
+    const key = bucketKey(t.txn_date, spanDays);
+    if(!buckets[key]) buckets[key] = { income:0, expense:0 };
+    buckets[key][t.type] += Number(t.amount);
+  });
+  const sortedKeys = Object.keys(buckets).sort();
+  const trendLabels = sortedKeys;
+  const incomeSeries = sortedKeys.map(k=>buckets[k].income);
+  const expenseSeries = sortedKeys.map(k=>buckets[k].expense);
+
+  const trendCtx = document.getElementById('trendChart').getContext('2d');
+  if(trendChartInstance) trendChartInstance.destroy();
+  trendChartInstance = new Chart(trendCtx, {
+    type: 'bar',
+    data: {
+      labels: trendLabels,
+      datasets: [
+        { label:'Income', data:incomeSeries, backgroundColor:'#4C7A56' },
+        { label:'Expenses', data:expenseSeries, backgroundColor:'#9C3B30' }
+      ]
+    },
+    options: {
+      responsive:true,
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ family:'Inter' } } } },
+      scales:{
+        x:{ grid:{ display:false } },
+        y:{ beginAtZero:true, grid:{ color:'#23261F14' } }
+      }
+    }
+  });
+
+  // ---- Category donut ----
+  const catEntries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
+  const catCtx = document.getElementById('categoryChart').getContext('2d');
+  if(categoryChartInstance) categoryChartInstance.destroy();
+  categoryChartInstance = new Chart(catCtx, {
+    type: 'doughnut',
+    data: {
+      labels: catEntries.map(e=>e[0]),
+      datasets: [{ data: catEntries.map(e=>e[1]), backgroundColor: CHART_COLORS, borderColor:'#F5F3EC', borderWidth:2 }]
+    },
+    options: {
+      responsive:true,
+      plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ family:'Inter' }, padding:10 } } },
+      cutout:'60%'
+    }
+  });
 }
 
 function renderTxnRow(t){

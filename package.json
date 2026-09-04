@@ -2,6 +2,9 @@
   "name": "ledger-dashboard",
   "version": "1.0.0",
   "scripts": {
-    "start": "npx serve -s . -l tcp://0.0.0.0:$PORT"
+    "start": "serve -s . -l tcp://0.0.0.0:$PORT"
+  },
+  "dependencies": {
+    "serve": "^14.2.6"
   }
 }

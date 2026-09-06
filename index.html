@@ -172,7 +172,6 @@
   <p class="tag" style="margin-bottom:20px;">personal finance, kept honest</p>
   <input type="email" id="emailInput" placeholder="you@email.com" />
   <button onclick="sendMagicLink()">Send magic link</button>
-  <!--<button class="ghost" onclick="loginWithGoogle()" style="margin-top:8px;">Continue with Google</button>-->
   <div id="loginStatus"></div>
 </div>
 
@@ -224,7 +223,17 @@
         <select id="txnType"><option value="expense">Expense</option><option value="income">Income</option></select>
         <input id="txnAmount" type="number" step="0.01" placeholder="Amount" required />
         <input id="txnVendor" type="text" placeholder="Vendor / source" />
-        <input id="txnCategory" type="text" placeholder="Category" />
+        <select id="txnCategory" onchange="onCategoryChange('txnCategory','txnCategoryOther')">
+          <option value="food">Food</option>
+          <option value="transport">Transport</option>
+          <option value="groceries">Groceries</option>
+          <option value="bills">Bills</option>
+          <option value="entertainment">Entertainment</option>
+          <option value="health">Health</option>
+          <option value="shopping">Shopping</option>
+          <option value="other">Other...</option>
+        </select>
+        <input id="txnCategoryOther" type="text" placeholder="Type category" class="hidden" />
         <input id="txnDate" type="date" />
         <button type="submit">Add</button>
       </form>
@@ -254,7 +263,15 @@
       <form class="add-fixed" onsubmit="addFixedExpense(event)">
         <input id="fixedName" type="text" placeholder="Name (e.g. Rent)" required />
         <input id="fixedAmount" type="number" step="0.01" placeholder="Amount" required />
-        <input id="fixedCategory" type="text" placeholder="Category" value="fixed" />
+        <select id="fixedCategory" onchange="onCategoryChange('fixedCategory','fixedCategoryOther')">
+          <option value="fixed">Fixed</option>
+          <option value="bills">Bills</option>
+          <option value="subscriptions">Subscriptions</option>
+          <option value="insurance">Insurance</option>
+          <option value="loan">Loan</option>
+          <option value="other">Other...</option>
+        </select>
+        <input id="fixedCategoryOther" type="text" placeholder="Type category" class="hidden" />
         <select id="fixedFrequency" onchange="onFrequencyChange()">
           <option value="monthly" selected>Monthly</option>
           <option value="weekly">Weekly</option>
@@ -277,7 +294,7 @@
 
 <script>
 // ============================================================
-// CONFIG — replace with your Supabase project values
+// CONFIG
 // ============================================================
 const SUPABASE_URL = "https://mqmyqayxyxocjwbysktt.supabase.co/";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im1xbXlxYXl4eXhvY2p3Ynlza3R0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4ODg3NTgsImV4cCI6MjEwMjQ2NDc1OH0.7eMKKhT2wVvYLlPeWCuQYqhJp660kdF7kkaQ3qam4g8";
@@ -290,7 +307,29 @@ let categoryChartInstance = null;
 
 const CHART_COLORS = ['#234D35','#A9832B','#9C3B30','#4C7A56','#5B5D51','#C9A227','#6E8B7A','#B0413E'];
 
+// Fixed category list — keep this in sync with the n8n AI Agent prompts
+const CATEGORIES = ['food','transport','groceries','bills','entertainment','shopping','health','other'];
+
 document.getElementById('txnDate').valueAsDate = new Date();
+
+// ---------- Category dropdown "Other" toggle ----------
+function onCategoryChange(selectId, otherId){
+  const select = document.getElementById(selectId);
+  const other = document.getElementById(otherId);
+  if(select.value === 'other'){
+    other.classList.remove('hidden');
+    other.required = true;
+  } else {
+    other.classList.add('hidden');
+    other.required = false;
+    other.value = '';
+  }
+}
+function resolveCategory(selectId, otherId){
+  const select = document.getElementById(selectId);
+  const other = document.getElementById(otherId);
+  return select.value === 'other' ? (other.value.trim() || 'other') : select.value;
+}
 
 // ---------- Auth ----------
 async function sendMagicLink(){
@@ -300,9 +339,6 @@ async function sendMagicLink(){
   status.textContent = "Sending...";
   const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: window.location.href }});
   status.textContent = error ? error.message : "Check your email for the login link.";
-}
-async function loginWithGoogle(){
-  await sb.auth.signInWithOAuth({ provider:'google', options:{ redirectTo: window.location.href }});
 }
 async function logout(){
   await sb.auth.signOut();
@@ -323,7 +359,7 @@ async function init(){
   setRangeThisMonth();
 }
 
-// ---------- Date range helpers ----------
+// ---------- Date range helpers (timezone-safe) ----------
 function iso(d){
   const y = d.getFullYear();
   const m = String(d.getMonth()+1).padStart(2,'0');
@@ -410,12 +446,12 @@ async function loadTransactions(){
 function bucketKey(dateStr, spanDays){
   const d = new Date(dateStr + 'T00:00:00');
   if(spanDays <= 45){
-    return dateStr; // daily buckets
+    return dateStr;
   } else if(spanDays <= 400){
     const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0');
-    return `${y}-${m}`; // monthly buckets
+    return `${y}-${m}`;
   } else {
-    return String(d.getFullYear()); // yearly buckets
+    return String(d.getFullYear());
   }
 }
 
@@ -424,7 +460,6 @@ function renderCharts(data, byCat){
   const end = new Date(currentRange.end + 'T00:00:00');
   const spanDays = Math.max(1, Math.round((end - start) / 86400000));
 
-  // ---- Trend chart: income vs expense per bucket ----
   const buckets = {};
   data.forEach(t=>{
     const key = bucketKey(t.txn_date, spanDays);
@@ -432,7 +467,6 @@ function renderCharts(data, byCat){
     buckets[key][t.type] += Number(t.amount);
   });
   const sortedKeys = Object.keys(buckets).sort();
-  const trendLabels = sortedKeys;
   const incomeSeries = sortedKeys.map(k=>buckets[k].income);
   const expenseSeries = sortedKeys.map(k=>buckets[k].expense);
 
@@ -441,7 +475,7 @@ function renderCharts(data, byCat){
   trendChartInstance = new Chart(trendCtx, {
     type: 'bar',
     data: {
-      labels: trendLabels,
+      labels: sortedKeys,
       datasets: [
         { label:'Income', data:incomeSeries, backgroundColor:'#4C7A56' },
         { label:'Expenses', data:expenseSeries, backgroundColor:'#9C3B30' }
@@ -457,7 +491,6 @@ function renderCharts(data, byCat){
     }
   });
 
-  // ---- Category donut ----
   const catEntries = Object.entries(byCat).sort((a,b)=>b[1]-a[1]);
   const catCtx = document.getElementById('categoryChart').getContext('2d');
   if(categoryChartInstance) categoryChartInstance.destroy();
@@ -477,7 +510,6 @@ function renderCharts(data, byCat){
 
 function renderTxnRow(t){
   const wrap = document.createElement('div');
-
   const row = document.createElement('div');
   row.className = 'ledger-row';
   row.innerHTML = `
@@ -498,6 +530,8 @@ function renderTxnRow(t){
 function toggleEditForm(wrap, t){
   const existing = wrap.querySelector('.edit-form');
   if(existing){ existing.remove(); return; }
+  const CATS = ['food','transport','groceries','bills','entertainment','health','shopping'];
+  const isKnown = CATS.includes(t.category);
   const form = document.createElement('div');
   form.className = 'edit-form';
   form.innerHTML = `
@@ -507,15 +541,32 @@ function toggleEditForm(wrap, t){
     </select>
     <input class="e-amount" type="number" step="0.01" value="${t.amount}" />
     <input class="e-vendor" type="text" value="${escapeAttr(t.vendor||'')}" placeholder="Vendor" />
-    <input class="e-category" type="text" value="${escapeAttr(t.category||'')}" placeholder="Category" />
+    <select class="e-category">
+      <option value="food" ${t.category==='food'?'selected':''}>Food</option>
+      <option value="transport" ${t.category==='transport'?'selected':''}>Transport</option>
+      <option value="groceries" ${t.category==='groceries'?'selected':''}>Groceries</option>
+      <option value="bills" ${t.category==='bills'?'selected':''}>Bills</option>
+      <option value="entertainment" ${t.category==='entertainment'?'selected':''}>Entertainment</option>
+      <option value="health" ${t.category==='health'?'selected':''}>Health</option>
+      <option value="shopping" ${t.category==='shopping'?'selected':''}>Shopping</option>
+      <option value="other" ${!isKnown?'selected':''}>Other...</option>
+    </select>
+    <input class="e-category-other ${isKnown?'hidden':''}" type="text" value="${!isKnown?escapeAttr(t.category||''):''}" placeholder="Type category" />
     <input class="e-date" type="date" value="${t.txn_date}" />
     <button class="small">Save</button>`;
+  const catSelect = form.querySelector('.e-category');
+  const catOther = form.querySelector('.e-category-other');
+  catSelect.onchange = () => {
+    if(catSelect.value === 'other'){ catOther.classList.remove('hidden'); }
+    else { catOther.classList.add('hidden'); catOther.value=''; }
+  };
   form.querySelector('button').onclick = async () => {
+    const category = catSelect.value === 'other' ? (catOther.value.trim() || 'other') : catSelect.value;
     const updates = {
       type: form.querySelector('.e-type').value,
       amount: parseFloat(form.querySelector('.e-amount').value),
       vendor: form.querySelector('.e-vendor').value.trim(),
-      category: form.querySelector('.e-category').value.trim() || 'uncategorized',
+      category,
       txn_date: form.querySelector('.e-date').value
     };
     const { error } = await sb.from('transactions').update(updates).eq('id', t.id);
@@ -537,7 +588,7 @@ async function addTransaction(e){
   const type = document.getElementById('txnType').value;
   const amount = parseFloat(document.getElementById('txnAmount').value);
   const vendor = document.getElementById('txnVendor').value.trim();
-  const category = document.getElementById('txnCategory').value.trim() || 'uncategorized';
+  const category = resolveCategory('txnCategory','txnCategoryOther');
   const txn_date = document.getElementById('txnDate').value;
 
   const { error } = await sb.from('transactions').insert({
@@ -546,7 +597,8 @@ async function addTransaction(e){
   if(error){ alert(error.message); return; }
   document.getElementById('txnAmount').value = '';
   document.getElementById('txnVendor').value = '';
-  document.getElementById('txnCategory').value = '';
+  document.getElementById('txnCategory').value = 'food';
+  onCategoryChange('txnCategory','txnCategoryOther');
   await loadTransactions();
 }
 
@@ -610,7 +662,7 @@ async function addFixedExpense(e){
   e.preventDefault();
   const name = document.getElementById('fixedName').value.trim();
   const amount = parseFloat(document.getElementById('fixedAmount').value);
-  const category = document.getElementById('fixedCategory').value.trim() || 'fixed';
+  const category = resolveCategory('fixedCategory','fixedCategoryOther');
   const frequency = document.getElementById('fixedFrequency').value;
   const due_day = document.getElementById('fixedDueDay').value ? parseInt(document.getElementById('fixedDueDay').value) : null;
   const due_month = frequency === 'yearly' && document.getElementById('fixedDueMonth').value
@@ -624,6 +676,8 @@ async function addFixedExpense(e){
   document.getElementById('fixedAmount').value = '';
   document.getElementById('fixedDueDay').value = '';
   document.getElementById('fixedDueMonth').value = '';
+  document.getElementById('fixedCategory').value = 'fixed';
+  onCategoryChange('fixedCategory','fixedCategoryOther');
   await loadFixedExpenses();
 }
 

@@ -362,6 +362,7 @@ document.getElementById('txnDate').valueAsDate = new Date();
 
 // ---------- Chat widget (talks to n8n Webhook instead of Telegram) ----------
 const N8N_WEBHOOK_URL = "https://n8n-production-6e1c.up.railway.app/webhook/9c4c68eb-debf-4b56-8016-c7ba80620586";
+const APP_SHARED_SECRET = "Seanlee2715";
 
 let pendingChatImage = null; // { base64, mimeType, name }
 
@@ -419,7 +420,7 @@ async function sendChatMessage(e){
   try{
     const res = await fetch(N8N_WEBHOOK_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Seanlee2715': APP_SHARED_SECRET },
+      headers: { 'Content-Type': 'application/json', 'x-app-secret': APP_SHARED_SECRET },
       body: JSON.stringify(payload)
     });
     const data = await res.json();

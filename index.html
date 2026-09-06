@@ -361,7 +361,6 @@ document.getElementById('txnDate').valueAsDate = new Date();
 
 // ---------- Chat widget (talks to n8n Webhook instead of Telegram) ----------
 const N8N_WEBHOOK_URL = "https://n8n-production-6e1c.up.railway.app/webhook/9c4c68eb-debf-4b56-8016-c7ba80620586";
-const APP_SHARED_SECRET = "Seanlee2715";
 
 let pendingChatImage = null; // { base64, mimeType, name }
 
@@ -417,13 +416,9 @@ async function sendChatMessage(e){
 
   addChatBubble('...', 'bot');
   try{
-    // Grab the current session token — this is what proves to n8n
-    // that this request is really coming from a logged-in session,
-    // not just someone who found the webhook URL.
-    const { data: { session } } = await sb.auth.getSession();
     const res = await fetch(N8N_WEBHOOK_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      headers: { 'Content-Type': 'application/json', 'Seanlee2715': APP_SHARED_SECRET },
       body: JSON.stringify(payload)
     });
     const data = await res.json();

@@ -426,6 +426,7 @@ async function sendChatMessage(e){
     addChatBubble(data.reply || 'Done.', 'bot');
     loadAll(); // refresh dashboard so the new entry shows up immediately
   } catch(err){
+    console.error('Chat send failed:', err);
     document.getElementById('chatMessages').lastChild.remove();
     addChatBubble('Something went wrong sending that — try again.', 'bot');
   }
